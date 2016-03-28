@@ -22,8 +22,9 @@
     <Compile Include="AzureHelper.cs" />
     <Compile Include="CreateAzureContainer.cs" />
     <Compile Include="GetPerfTestAssemblies.cs" />
-    <Compile Include="SendToEventHub.cs" />
     <Compile Include="UploadClient.cs" />
+    <Compile Include="SendToEventHub.cs" />
+    <Compile Include="SendToHelix.cs" />
     <Compile Include="UploadToAzure.cs" />
     <Compile Include="WriteBuildStatsJson.cs" />
     <Compile Include="WriteItemsToJson.cs" />

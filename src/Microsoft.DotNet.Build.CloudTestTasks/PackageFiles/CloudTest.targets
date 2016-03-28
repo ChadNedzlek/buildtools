@@ -49,8 +49,9 @@
     <SupplementalPayloadFile>$(ArchivesRoot)$(SupplementalPayloadFilename)</SupplementalPayloadFile>
     <OverwriteOnUpload Condition="'$(OverwriteOnUpload)' == ''">false</OverwriteOnUpload>
     <TimeoutInSeconds Condition="'$(TimeoutInSeconds)' == ''">600</TimeoutInSeconds>
+    <HelixApiEndpoint>https://helixview.azurewebsites.net/api/jobs</HelixApiEndpoint>
   </PropertyGroup>
-  
+
   <Import Project="$(MSBuildThisFileDirectory)CloudTest.Perf.targets" Condition="'$(Performance)' == 'true'" />
 
   <!-- main entrypoint -->
@@ -76,6 +77,10 @@
     <Error Condition="'$(BuildIsOfficial)' == 'true' and '$(BuildIsOfficialEventHubPath)' == ''" Text="Missing required property BuildIsOfficialEventHubPath." />
     <Error Condition="'$(BuildIsOfficial)' == 'true' and '$(BuildIsOfficialEventHubSharedAccessKeyName)' == ''" Text="Missing required property BuildIsOfficialEventHubSharedAccessKeyName." />
     <Error Condition="'$(BuildIsOfficial)' == 'true' and '$(BuildIsOfficialEventHubSharedAccessKey)' == ''" Text="Missing required property BuildIsOfficialEventHubSharedAccessKey." />
+    <!-- TODO: Once we all users are no longer setting BuildCompleteConnection, we can remove this message, and the '$(BuildCompleteConnection)' == '' condition from the error following -->
+    <Message Important="High" Condition="'$(SkipNotifyEvent)' != 'true' and '$(HelixApiAccessKey)' == '' and '$(BuildCompleteConnection)' != '' " Text="BuildCompleteConnection is depricated, use HelixApiAccessKey" />
+    <Error Condition="'$(SkipNotifyEvent)' != 'true' and '$(HelixApiAccessKey)' == '' and '$(BuildCompleteConnection)' == '' " Text="HelixApiAccessKey must be set to start Helix jobs" />
+
     <!-- gather the test archives for upload -->
     <ItemGroup>
       <ForUpload Include="$(TestArchivesRoot)*.zip" />
@@ -296,7 +301,6 @@
         <ResultsUri>$(ResultsUri)/%(TestListFile.CorrelationId)</ResultsUri>
         <ResultsUriRSAS>$(ResultsReadOnlyToken)</ResultsUriRSAS>
         <ResultsUriWSAS>$(ResultsWriteOnlyToken)</ResultsUriWSAS>
-        <Creator>$(Creator)</Creator>
         <Product>$(TestProduct)</Product>
         <Architecture>$(Platform)</Architecture>
         <Configuration>$(ConfigurationGroup)$(ConfigurationSuffix)</Configuration>
@@ -334,11 +338,15 @@
           Inputs="%(TestListFile.BuildCompleteJson)"
           Outputs="%(TestListFile.CorrelationId)"
           Condition="'$(SkipNotifyEvent)' != 'true'">
-    <SendToEventHub
+    <SendToEventHub Condition=" '$(HelixApiAccessKey)' == '' "
       EventHubPath="$(EventHubPath)"
       EventData="%(TestListFile.BuildCompleteJson)"
       EventHubSharedAccessKeyName="$(EventHubSharedAccessKeyName)"
       EventHubSharedAccessKey="$(EventHubSharedAccessKey)"/>
+    <SendToHelix Condition=" '$(HelixApiAccessKey)' != '' "
+      AccessToken="$(HelixApiAccessKey)"
+      HelixApiEndpoint="$(HelixApiEndpoint)"
+      EventData="%(TestListFile.BuildCompleteJson)" />
     <SendToEventHub
       Condition="'$(BuildIsOfficial)' == 'true'"
       EventHubPath="$(BuildIsOfficialEventHubPath)"
