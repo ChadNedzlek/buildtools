@@ -78,7 +78,7 @@
     <Error Condition="'$(BuildIsOfficial)' == 'true' and '$(BuildIsOfficialEventHubSharedAccessKeyName)' == ''" Text="Missing required property BuildIsOfficialEventHubSharedAccessKeyName." />
     <Error Condition="'$(BuildIsOfficial)' == 'true' and '$(BuildIsOfficialEventHubSharedAccessKey)' == ''" Text="Missing required property BuildIsOfficialEventHubSharedAccessKey." />
     <!-- TODO: Once we all users are no longer setting BuildCompleteConnection, we can remove this message, and the '$(BuildCompleteConnection)' == '' condition from the error following -->
-    <Message Important="High" Condition="'$(SkipNotifyEvent)' != 'true' and '$(HelixApiAccessKey)' == '' and '$(BuildCompleteConnection)' != '' " Text="BuildCompleteConnection is depricated, use HelixApiAccessKey" />
+    <Warning Condition="'$(SkipNotifyEvent)' != 'true' and '$(HelixApiAccessKey)' == '' and '$(BuildCompleteConnection)' != '' " Text="BuildCompleteConnection is depricated, use HelixApiAccessKey" />
     <Error Condition="'$(SkipNotifyEvent)' != 'true' and '$(HelixApiAccessKey)' == '' and '$(BuildCompleteConnection)' == '' " Text="HelixApiAccessKey must be set to start Helix jobs" />
 
     <!-- gather the test archives for upload -->
@@ -245,6 +245,7 @@
         <CorrelationId>$([System.Guid]::NewGuid())</CorrelationId>
         <BuildCompleteJson>$(TestWorkingDir)$(OSPlatformConfig)/PerfBuildComplete.json</BuildCompleteJson>
         <OfficialBuildJson>$(TestWorkingDir)$(OSPlatformConfig)/PerfOfficialBuild.json</OfficialBuildJson>
+        <HelixJobUploadCompletePath>$(TestWorkingDir)$(OSPlatformConfig)/helixjobuploadcomplete.sem</HelixJobUploadCompletePath>
       </TestListFile>
     </ItemGroup>
   </Target>
@@ -294,7 +295,8 @@
     <!-- signal that the build is ready for testing -->
     <ItemGroup>
       <BuildComplete Include="%(TestListFile.BuildCompleteJson)">
-        <CorrelationId>%(TestListFile.CorrelationId)</CorrelationId>
+        <CorrelationId Condition=" '$(HelixApiAccessKey)' == '' ">%(TestListFile.CorrelationId)</CorrelationId>
+        <Creator Condition=" '$(HelixApiAccessKey)' == '' ">$(Creator)</Creator>
         <DropContainerSAS>$(DropUriReadOnlyToken)</DropContainerSAS>
         <ListUri>$(DropUri)%(TestListFile.Filename)%(TestListFile.Extension)$(DropUriReadOnlyToken)</ListUri>
         <QueueId>$(TargetQueue)</QueueId>
@@ -309,34 +311,19 @@
       </BuildComplete>
     </ItemGroup>
     <WriteItemsToJson JsonFileName="%(TestListFile.BuildCompleteJson)" Items="@(BuildComplete)" />
-    <!-- signal that this is an official build as required -->
-    <ItemGroup>
-      <OfficialBuild Include="%(TestListFile.OfficialBuildJson)">
-        <Type>MarkTestRunAsOfficial</Type>
-        <Aggregate>%(TestListFile.CorrelationId)</Aggregate>
-      </OfficialBuild>
-    </ItemGroup>
-    <WriteItemsToJson JsonFileName="%(TestListFile.OfficialBuildJson)" Items="@(OfficialBuild)" />
     <!-- write out build statistics (only contains number of built projects at present) -->
     <ItemGroup>
       <BuiltSuccessfully Include="$(TestArchivesRoot)*.zip" />
       <BuiltSuccessfully Include="$(AnyOSTestArchivesRoot)*.zip" />      
       <BuiltSuccessfully Condition="'$(TargetsUnix)' == 'true'"  Include="$(UnixTestArchivesRoot)*.zip" />      
     </ItemGroup>
-    <WriteTestBuildStatsJson
-      CorrelationIds="@(TestListFile->'%(CorrelationId)')"
-      LogUri="none"
-      OutputFile="$(BuildStatsJsonFile)"
-      ProjectsBuiltCount="@(BuiltSuccessfully->Count())"
-      ProjectsFailed="@(FailedToBuild)"
-      TestCount="0" />
   </Target>
 
   <!-- send completion events -->
   <Target Name="SendCompletionEvent"
           AfterTargets="WriteCompletionEvent"
           Inputs="%(TestListFile.BuildCompleteJson)"
-          Outputs="%(TestListFile.CorrelationId)"
+          Outputs="%(TestListFile.HelixJobUploadCompletePath)"
           Condition="'$(SkipNotifyEvent)' != 'true'">
     <SendToEventHub Condition=" '$(HelixApiAccessKey)' == '' "
       EventHubPath="$(EventHubPath)"
@@ -346,13 +333,16 @@
     <SendToHelix Condition=" '$(HelixApiAccessKey)' != '' "
       AccessToken="$(HelixApiAccessKey)"
       HelixApiEndpoint="$(HelixApiEndpoint)"
-      EventData="%(TestListFile.BuildCompleteJson)" />
+      EventData="%(TestListFile.BuildCompleteJson)">
+      <Output TaskParameter="JobId" ItemName="PerfTestAssembly" />
+    </SendToHelix>
     <SendToEventHub
       Condition="'$(BuildIsOfficial)' == 'true'"
       EventHubPath="$(BuildIsOfficialEventHubPath)"
       EventHubSharedAccessKeyName="$(BuildIsOfficialEventHubSharedAccessKeyName)"
       EventHubSharedAccessKey="$(BuildIsOfficialEventHubSharedAccessKey)"
       EventData="%(TestListFile.OfficialBuildJson)"/>
+    <WriteLinesToFile File="%(TestListFile.HelixJobUploadCompletePath)" Overwrite="true" Lines="$(JobId)"/>
   </Target>
 
 </Project>

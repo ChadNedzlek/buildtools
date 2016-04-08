@@ -34,6 +34,12 @@ namespace Microsoft.DotNet.Build.CloudTestTasks
         [Required]
         public string EventDataPath { get; set; }
 
+        /// <summary>
+        /// Once a helix job is started, this is the identifier of that job
+        /// </summary>
+        [Output]
+        public string JobId { get; set; }
+
         public override bool Execute()
         {
             return ExecuteAsync().GetAwaiter().GetResult();
@@ -52,7 +58,7 @@ namespace Microsoft.DotNet.Build.CloudTestTasks
                 while (true)
                 {
                     HttpResponseMessage response;
-                    using (var stream = File.OpenRead(EventDataPath))
+                    using (Stream stream = File.OpenRead(EventDataPath))
                     {
                         response = await client.PostAsync(apiUrl, new StreamContent(stream));
                     }
@@ -60,21 +66,21 @@ namespace Microsoft.DotNet.Build.CloudTestTasks
                     if (response.IsSuccessStatusCode)
                     {
                         JObject responseObject;
-                        using (var stream = await response.Content.ReadAsStreamAsync())
+                        using (Stream stream = await response.Content.ReadAsStreamAsync())
                         using (StreamReader streamReader = new StreamReader(stream))
                         using (JsonReader jsonReader = new JsonTextReader(streamReader))
                         {
                             responseObject = JObject.Load(jsonReader);
                         }
 
-                        var jobId = (string)responseObject["JobId"];
-                        if (String.IsNullOrEmpty(jobId))
+                        JobId = (string)responseObject["JobId"];
+                        if (String.IsNullOrEmpty(JobId))
                         {
                             Log.LogError("Publish to '{0}' did not return a job ID", ApiEndpoint);
                             return false;
                         }
 
-                        Log.LogMessage(MessageImportance.High, "Started Helix job: CorrelationId = {0}", jobId);
+                        Log.LogMessage(MessageImportance.High, "Started Helix job: CorrelationId = {0}", JobId);
                         return true;
                     }
 
